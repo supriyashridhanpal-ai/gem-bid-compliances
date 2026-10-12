@@ -1,28 +1,19 @@
-def check_tender_rules(pdf_text):
-    requirements = ["pan", "gst", "experience", "turnover"]
-    lower_text = pdf_text.lower()
+def check_tender_rules(text):
+    rules = ["pan", "gst", "experience", "turnover"]
+    lower_text = text.lower()
+    count = 0
     
-    passed_items = []
-    failed_items = []
-    
-    for item in requirements:
-        if item in lower_text:
-            passed_items.append(item)
-        else:
-            failed_items.append(item)
+    for word in rules:
+        if word in lower_text:
+            count = count + 1
             
-    total_count = len(requirements)
-    passed_count = len(passed_items)
-    percentage = (passed_count / total_count) * 100
-    
-    if percentage >= 75:
-        verdict = "VERIFIED"
+    score = (count / len(rules)) * 100
+    if score >= 75:
+        status = "VERIFIED"
     else:
-        verdict = "REJECTED"
+        status = "REJECTED"
         
     return {
-        "verdict": verdict,
-        "score": percentage,
-        "passed_items": passed_items,
-        "failed_items": failed_items
+        "status": status,
+        "score": score
     }
