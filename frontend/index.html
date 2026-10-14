@@ -1,6 +1,82 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TenderCheck AI | Login</title><link rel="stylesheet" href="style.css"></head>
-<body class="login-page"><main class="login-shell"><section class="brand-panel"><a class="brand" href="index.html"><span class="brand-mark">✓</span><span>TenderCheck <b>AI</b></span></a><div class="brand-copy"><span class="eyebrow">TENDER COMPLIANCE WORKSPACE</span><h1>Make tender reviews clearer.</h1><p>Upload a PDF and check for key compliance terms through your team's verification API.</p><div class="feature-list"><div><span class="feature-icon">▤</span><span><b>PDF text extraction</b><small>Read text from a tender document.</small></span></div><div><span class="feature-icon">◎</span><span><b>Rule-based checks</b><small>Check PAN, GST, experience and turnover.</small></span></div><div><span class="feature-icon">↗</span><span><b>Instant result</b><small>View the score and verification status.</small></span></div></div></div><p class="brand-foot">Frontend connected to your Flask API.</p></section><section class="login-panel"><form class="login-card" id="loginForm"><div class="mobile-brand brand"><span class="brand-mark">✓</span><span>TenderCheck <b>AI</b></span></div><span class="eyebrow">WELCOME</span><h2>Open your workspace</h2><p class="muted">This is a simple demo login screen.</p><label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required><label for="password">Password</label><div class="password-wrap"><input id="password" type="password" placeholder="Enter any password" required minlength="4"><button type="button" class="password-toggle" id="togglePassword">Show</button></div><p class="demo-note">Demo login only: credentials are not checked or stored by the backend.</p><p class="form-message" id="message" role="status"></p><button class="btn btn-primary btn-full" type="submit">Continue <span>→</span></button></form></section></main><script>
-document.getElementById('togglePassword').onclick=()=>{let p=document.getElementById('password');p.type=p.type==='password'?'text':'password';document.getElementById('togglePassword').textContent=p.type==='password'?'Show':'Hide'};
-document.getElementById('loginForm').addEventListener('submit',e=>{e.preventDefault();sessionStorage.setItem('tcUser',document.getElementById('email').value.trim());location.href='dashboard.html'});
-</script></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeM Verify | Bid Compliance</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">G</div>
+        <div><strong>GeM Verify</strong><span>Bid Compliance Platform</span></div>
+      </div>
+      <div class="nav-label">WORKSPACE</div>
+      <button class="nav-item active" data-page="overview"><span class="nav-icon">▦</span> Overview</button>
+      <button class="nav-item" data-page="verify"><span class="nav-icon">✓</span> Verify a bid</button>
+      <button class="nav-item" data-page="history"><span class="nav-icon">◷</span> Verification history</button>
+      <div class="sidebar-bottom">
+        <div class="secure-note"><span class="secure-icon">◇</span><div><strong>Document-first review</strong><p>PDFs are processed for text and checked against your requirements.</p></div></div>
+        <div class="user-card"><div class="avatar">GV</div><div><strong>Verification desk</strong><span>Workspace</span></div><span class="user-dots">•••</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow">GOVERNMENT PROCUREMENT / COMPLIANCE</div><h1 id="page-title">Overview</h1></div>
+        <div class="top-actions"><span class="api-status"><i id="api-dot"></i><span id="api-status-text">Checking API…</span></span><button class="primary-btn small" id="header-verify">+ New verification</button></div>
+      </header>
+
+      <section class="page active" id="page-overview">
+        <div class="welcome-row"><div><h2>Bid compliance workspace</h2><p>Review tender documents against required eligibility and statutory criteria.</p></div><div class="date-chip">● &nbsp; Local workspace</div></div>
+        <div class="stat-grid">
+          <article class="stat-card"><div class="stat-top"><span>Total reviews</span><span class="stat-icon blue">▤</span></div><strong id="stat-total">—</strong><p>Saved verification records</p></article>
+          <article class="stat-card"><div class="stat-top"><span>Verified</span><span class="stat-icon green">✓</span></div><strong id="stat-verified">—</strong><p>All listed requirements found</p></article>
+          <article class="stat-card"><div class="stat-top"><span>Non-compliant</span><span class="stat-icon red">!</span></div><strong id="stat-noncompliant">—</strong><p>Requirements not found</p></article>
+          <article class="stat-card"><div class="stat-top"><span>Manual review</span><span class="stat-icon amber">⌕</span></div><strong id="stat-manual">—</strong><p>Needs human confirmation</p></article>
+        </div>
+        <div class="content-grid">
+          <article class="panel intro-panel"><div class="panel-heading"><div><div class="eyebrow">START HERE</div><h3>Verify a bid document</h3></div><span class="panel-icon">↑</span></div><p class="panel-copy">Upload a readable PDF and specify the requirements to check. The system extracts text and reports matched, missing, and manual-review items.</p>
+          <div class="steps"><div class="step"><span>01</span><div><strong>Upload PDF</strong><p>Maximum file size: 10 MB</p></div></div><div class="step"><span>02</span><div><strong>Set requirements</strong><p>Separate each requirement with a comma</p></div></div><div class="step"><span>03</span><div><strong>Review results</strong><p>Use the result as an aid, not a final legal decision</p></div></div></div>
+          <button class="primary-btn" id="start-verify">Start verification <span>→</span></button></article>
+          <article class="panel recent-panel"><div class="panel-heading"><div><div class="eyebrow">LATEST ACTIVITY</div><h3>Recent verifications</h3></div><button class="text-btn" id="view-all">View all →</button></div><div id="recent-list" class="recent-list"><div class="empty-state">Loading saved reviews…</div></div></article>
+        </div>
+        <div class="notice"><span class="notice-icon">i</span><div><strong>Important</strong><p>Current checks use text matching. They do not independently validate GST status, PAN records, turnover evidence, or legal eligibility. Confirm critical documents manually.</p></div></div>
+      </section>
+
+      <section class="page" id="page-verify">
+        <div class="page-intro"><div><h2>New verification</h2><p>Submit a PDF and the tender requirements you want to check.</p></div><span class="required-note">* Required fields</span></div>
+        <div class="verify-layout">
+          <form id="verify-form" class="panel form-panel">
+            <div class="section-title"><span class="section-number">01</span><div><h3>Bid document</h3><p>Choose the PDF file to review.</p></div></div>
+            <label class="upload-zone" id="upload-zone" for="pdf-file"><input id="pdf-file" type="file" accept="application/pdf,.pdf" required /><span class="upload-symbol">↑</span><strong id="file-label">Drop your PDF here or <em>browse files</em></strong><small>PDF only · Maximum 10 MB</small></label>
+            <div class="file-preview hidden" id="file-preview"><span class="pdf-icon">PDF</span><div><strong id="file-name"></strong><small id="file-size"></small></div><button type="button" class="remove-file" id="remove-file" aria-label="Remove file">×</button></div>
+            <div class="section-title requirements-title"><span class="section-number">02</span><div><h3>Tender requirements</h3><p>Enter exact terms or phrases to look for in the PDF.</p></div></div>
+            <label for="requirements">Requirements <span class="muted">(comma-separated)</span></label>
+            <textarea id="requirements" rows="4" required>GST, PAN, Turnover, Udyam/MSME, Make in India, EPFO</textarea>
+            <div class="field-hint">Tip: the current backend checks whether each phrase appears in the extracted document text.</div>
+            <div class="form-error hidden" id="form-error" role="alert"></div>
+            <div class="form-actions"><button type="button" class="secondary-btn" id="clear-form">Clear form</button><button type="submit" class="primary-btn" id="submit-btn">Run verification <span>→</span></button></div>
+          </form>
+          <aside class="panel side-info"><div class="side-info-icon">✓</div><h3>What gets checked?</h3><p>Your backend compares extracted PDF text with the requirement list and returns a status and compliance score.</p><div class="legend-row"><span class="status-dot verified"></span><div><strong>Verified</strong><small>All listed phrases were found.</small></div></div><div class="legend-row"><span class="status-dot non-compliant"></span><div><strong>Non-compliant</strong><small>At least one phrase was not found.</small></div></div><div class="legend-row"><span class="status-dot manual-review"></span><div><strong>Manual review</strong><small>Human confirmation is required.</small></div></div><div class="side-warning">Scanned PDFs without a text layer may not be readable. OCR is not currently included in the supplied backend.</div></aside>
+        </div>
+        <section id="result-section" class="panel result-panel hidden" aria-live="polite"></section>
+      </section>
+
+      <section class="page" id="page-history">
+        <div class="page-intro"><div><h2>Verification history</h2><p>Browse previously saved document checks.</p></div><button class="secondary-btn" id="refresh-history">↻ Refresh</button></div>
+        <div class="panel table-panel"><div class="table-toolbar"><div><strong>Saved reviews</strong><p id="history-count">Loading records…</p></div><div class="search-box"><span>⌕</span><input type="search" id="history-search" placeholder="Search filenames…" /></div></div>
+          <div class="table-wrap"><table><thead><tr><th>REVIEW ID</th><th>DOCUMENT</th><th>REQUIREMENTS</th><th>SUMMARY</th><th>DATE</th><th></th></tr></thead><tbody id="history-body"><tr><td colspan="6" class="empty-cell">Loading history…</td></tr></tbody></table></div>
+        </div>
+        <div id="history-error" class="form-error hidden"></div>
+      </section>
+      <footer class="footer"><span>GeM Verify · Bid Compliance Verification</span><span>For review assistance only</span></footer>
+    </main>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
+  <div class="modal-backdrop hidden" id="detail-modal"><div class="modal panel"><div class="modal-heading"><div><div class="eyebrow">SAVED RECORD</div><h3>Verification details</h3></div><button class="modal-close" id="close-modal">×</button></div><div id="modal-content"></div></div></div>
+  <script src="app.js"></script>
+</body>
+</html>
