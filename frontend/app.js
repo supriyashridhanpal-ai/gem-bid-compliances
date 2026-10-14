@@ -140,10 +140,16 @@ async function loadAdminResults(){
   $("admin-recent").innerHTML='<div class="empty">Loading results…</div>';
   try{
     const d=await api("/admin/results");adminResults=Array.isArray(d)?d:(d.results||d.submissions||[]);
-    const counts={VERIFIED:0,NON_COMPLIANT:0,MANUAL_REVIEW:0};adminResults.forEach(r=>{const s=normalizeStatus(r.status);if(counts[s]!==undefined)counts[s]++;});
+    const counts={VERIFIED:0,NON_COMPLIANT:0,MANUAL_REVIEW:0};adminResults.forEach(r=>{const s=normalizeStatus(
+  r.compliance_status || r.status || r.verification_status
+);if(counts[s]!==undefined)counts[s]++;});
     $("admin-total").textContent=adminResults.length;$("admin-verified").textContent=counts.VERIFIED;$("admin-noncompliant").textContent=counts.NON_COMPLIANT;$("admin-manual").textContent=counts.MANUAL_REVIEW;
-    $("admin-recent").innerHTML=adminResults.slice(0,4).map(r=>`<article class="result-card"><h3>${esc(r.filename||"Bid submission")}</h3><p><b>Company:</b> ${esc(r.company_name||r.company||"—")}</p><p><b>Tender:</b> ${esc(r.tender_title||"—")}</p><p><b>Status:</b> ${statusBadge(r.status)}</p><p><b>Score:</b> ${esc(r.score??"—")}${r.score===undefined?"":"%"}</p></article>`).join("")||'<div class="empty">No company submissions found.</div>';
-    $("admin-results-body").innerHTML=adminResults.length?adminResults.map((r,i)=>`<tr><td>#${esc(r.id??r.submission_id??i+1)}</td><td>${esc(r.company_name||r.company||"—")}</td><td>${esc(r.tender_title||"—")}</td><td>${esc(r.filename||"—")}</td><td>${statusBadge(r.status)}</td><td>${esc(r.score??"—")}${r.score===undefined?"":"%"}</td><td>${esc(r.details||r.message||"Human review may be required.")}</td></tr>`).join(""):'<tr><td colspan="7" class="empty">No results found.</td></tr>';
+    $("admin-recent").innerHTML=adminResults.slice(0,4).map(r=>`<article class="result-card"><h3>${esc(r.filename||"Bid submission")}</h3><p><b>Company:</b> ${esc(r.company_name||r.company||"—")}</p><p><b>Tender:</b> ${esc(r.tender_title||"—")}</p><p><b>Status:</b> ${statusBadge(
+  r.compliance_status || r.status || r.verification_status
+)}</p><p><b>Score:</b> ${esc(r.score??"—")}${r.score===undefined?"":"%"}</p></article>`).join("")||'<div class="empty">No company submissions found.</div>';
+    $("admin-results-body").innerHTML=adminResults.length?adminResults.map((r,i)=>`<tr><td>#${esc(r.id??r.submission_id??i+1)}</td><td>${esc(r.company_name||r.company||"—")}</td><td>${esc(r.tender_title||"—")}</td><td>${esc(r.filename||"—")}</td><td>${statusBadge(
+  r.compliance_status || r.status || r.verification_status
+)}</td><td>${esc(r.score??"—")}${r.score===undefined?"":"%"}</td><td>${esc(r.details||r.message||"Human review may be required.")}</td></tr>`).join(""):'<tr><td colspan="7" class="empty">No results found.</td></tr>';
   }catch(e){$("admin-recent").innerHTML='<div class="empty">Admin results are unavailable.</div>';showError("admin-results-error",e.message+" The backend needs an admin-only GET /admin/results endpoint that joins submissions, company, tender and verification result data.");$("admin-results-body").innerHTML='<tr><td colspan="7" class="empty">Results endpoint unavailable.</td></tr>';}
 }
 $("admin-refresh").addEventListener("click",loadAdminResults);$("admin-results-refresh").addEventListener("click",loadAdminResults);

@@ -582,8 +582,6 @@ def company_submissions():
         ]
 
         result = check_compliance(extracted, requirements)
-
-        # Temporary diagnostics: these appear in the backend terminal.
         print("TENDER REQUIREMENTS:", requirements)
         print("EXTRACTED TEXT:", repr(extracted[:1000]))
         print("COMPLIANCE RESULT:", result)
