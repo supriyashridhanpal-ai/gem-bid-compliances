@@ -1,113 +1,194 @@
-import sqlite3
+﻿import sqlite3
 from pathlib import Path
 
-
-# 1. Set the database file location
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "reviews.db"
+DB_NAME = Path(__file__).resolve().parent / "reviews.db"
 
 
-# 2. Connect to the SQLite database
-def get_connection():
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+def get_db():
+    """Connect to the SQLite database."""
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-# 3. Create the database table
 def initialize_database():
-    with get_connection() as connection:
-        connection.execute("""
+    """Create missing tables and update compatible older schemas."""
+
+    with get_db() as conn:
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS reviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 filename TEXT NOT NULL,
                 requirements TEXT NOT NULL,
-                result_summary TEXT NOT NULL,
+                summary TEXT,
+                result_summary TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+            );
+
+            CREATE TABLE IF NOT EXISTS companies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS tenders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                requirements TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER,
+                tender_id INTEGER,
+                filename TEXT,
+                extracted_text TEXT,
+                status TEXT DEFAULT 'Submitted'
+            );
+
+            CREATE TABLE IF NOT EXISTS verification_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER,
+                matched TEXT,
+                missing TEXT,
+                score REAL,
+                status TEXT
+            );
         """)
 
-    print("Database initialized successfully!")
+        # Read the actual columns in the existing reviews table.
+        columns = conn.execute(
+            "PRAGMA table_info(reviews)"
+        ).fetchall()
+
+        existing_columns = {
+            column["name"]: column
+            for column in columns
+        }
+
+        # Add missing optional columns without deleting existing records.
+        for column_name in ("summary", "result_summary"):
+            if column_name not in existing_columns:
+                conn.execute(
+                    f"ALTER TABLE reviews ADD COLUMN {column_name} TEXT"
+                )
 
 
-# 4. Save a compliance verification record
-def save_review(filename, requirements, result_summary):
-    with get_connection() as connection:
-        cursor = connection.execute("""
-            INSERT INTO reviews (
-                filename,
-                requirements,
-                result_summary
+def save_review(filename, requirements, summary):
+    """Save a verification summary using the existing database schema."""
+
+    with get_db() as conn:
+        columns = conn.execute(
+            "PRAGMA table_info(reviews)"
+        ).fetchall()
+
+        # Identify columns that are required and have no default value.
+        required_columns = [
+            column["name"]
+            for column in columns
+            if column["notnull"]
+            and column["dflt_value"] is None
+            and column["pk"] == 0
+        ]
+
+        values = {
+            "filename": filename,
+            "requirements": requirements,
+            "summary": summary,
+            "result_summary": summary,
+        }
+
+        # Refuse to insert if an older database has another required
+        # column that this function cannot safely populate.
+        supported_columns = {
+            "filename",
+            "requirements",
+            "summary",
+            "result_summary",
+        }
+
+        unsupported = [
+            name for name in required_columns
+            if name not in supported_columns
+        ]
+
+        if unsupported:
+            raise RuntimeError(
+                "The reviews table has additional required columns: "
+                + ", ".join(unsupported)
+                + ". Inspect the table schema before inserting."
             )
-            VALUES (?, ?, ?)
-        """, (filename, requirements, result_summary))
 
-        review_id = cursor.lastrowid
+        insert_columns = [
+            name for name in values
+            if name in {column["name"] for column in columns}
+        ]
 
-    return review_id
+        placeholders = ", ".join("?" for _ in insert_columns)
+        column_sql = ", ".join(insert_columns)
+        parameters = [values[name] for name in insert_columns]
+
+        cursor = conn.execute(
+            f"""
+            INSERT INTO reviews ({column_sql})
+            VALUES ({placeholders})
+            """,
+            parameters,
+        )
+
+        return cursor.lastrowid
 
 
-# 5. Retrieve all verification records
 def get_all_reviews():
-    with get_connection() as connection:
-        rows = connection.execute("""
-            SELECT
-                id,
-                filename,
-                requirements,
-                result_summary,
-                created_at
-            FROM reviews
-            ORDER BY id DESC
-        """).fetchall()
+    """Return verification history, newest first."""
 
-    # Convert database rows into a list of dictionaries
-    return [dict(row) for row in rows]
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reviews ORDER BY id DESC"
+        ).fetchall()
+
+        return [dict(row) for row in rows]
 
 
-# 6. Retrieve one record using its ID
 def get_review_by_id(review_id):
-    with get_connection() as connection:
-        row = connection.execute("""
-            SELECT
-                id,
-                filename,
-                requirements,
-                result_summary,
-                created_at
-            FROM reviews
-            WHERE id = ?
-        """, (review_id,)).fetchone()
+    """Retrieve one verification record."""
 
-    if row is None:
-        return None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM reviews WHERE id = ?",
+            (review_id,),
+        ).fetchone()
 
-    return dict(row)
+        return dict(row) if row else None
 
 
-# 7. Delete one verification record
-def delete_review(review_id):
-    with get_connection() as connection:
-        cursor = connection.execute("""
-            DELETE FROM reviews
-            WHERE id = ?
-        """, (review_id,))
+def register_company(name, email, username, password_hash):
+    """Register a company using a password hash."""
 
-        deleted = cursor.rowcount > 0
+    with get_db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO companies (name, email, username, password)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, email, username, password_hash),
+        )
 
-    return deleted
+        return cursor.lastrowid
 
 
-# 8. Run this file directly to initialize and test the database
-if __name__ == "__main__":
-    initialize_database()
+def login_company(username):
+    """Find a company using its username or email."""
 
-    print("\nExisting verification records:")
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM companies
+            WHERE username = ? OR email = ?
+            """,
+            (username, username),
+        ).fetchone()
 
-    reviews = get_all_reviews()
-
-    if reviews:
-        for review in reviews:
-            print(review)
-    else:
-        print("No verification records found.")
+        return dict(row) if row else None

@@ -1,12 +1,4 @@
-# Python cache files
+backend/reviews.db
+backend/uploads/
 __pycache__/
 *.pyc
-
-# Local database
-backend/reviews.db
-
-# Uploaded documents
-backend/uploads/
-
-# Test PDF
-sample_bid.pdf
