@@ -1,67 +1,45 @@
-# GeM Verify frontend
+# GeM Verify — role-based frontend
 
-A plain HTML/CSS/JavaScript frontend for the supplied Flask backend. No frontend build step or framework is required. The interface intentionally uses no animations or transitions.
+This is a plain HTML/CSS/JavaScript frontend (no build step and no animations/transitions).
 
-## Included screens
-- Overview dashboard with review counts and recent records
-- PDF upload and requirement form
-- Verification result with matched, missing, and manual-review items
-- Saved history with filename search and detail view
+## Screens included
+- Portal selection: Company or Government/Admin
+- Company sign-in and company registration
+- Company portal: published tenders, PDF bid upload, and own submission statuses
+- Government admin sign-in
+- Admin dashboard, tender publishing, and company upload results
 
-## Run it
+## Run
+1. Extract this ZIP into your project's `frontend` folder, replacing the old `index.html`, `style.css`, `app.js`.
+2. Start your Flask backend from the project root.
+3. Serve this folder, for example:
+   `python -m http.server 5500 --directory frontend`
+4. Open `http://127.0.0.1:5500`.
 
-1. Keep your backend files in the structure expected by your imports. Your `app(1).py` imports `backend.extraction`, `backend.compliance`, and `backend.database`, so a typical layout is:
+Change `API_BASE` at the top of `app.js` if your backend runs somewhere else.
 
-   ```text
-   project/
-   ├── app.py
-   ├── backend/
-   │   ├── __init__.py
-   │   ├── extraction.py
-   │   ├── compliance.py
-   │   └── database.py
-   └── frontend/
-       ├── index.html
-       ├── style.css
-       └── app.js
-   ```
+## Important backend integration requirement
+The backend files supplied with the original frontend only implement `GET /`, `POST /verify`, `GET /history`, and `GET /history/<id>`. They do **not** currently implement authentication, role permissions, tenders, company submissions, or admin results. This frontend intentionally calls the following expected API endpoints:
+- `POST /auth/company/register`
+- `POST /auth/company/login`
+- `POST /auth/admin/login`
+- `GET /tenders`
+- `POST /company/submissions`
+- `GET /company/submissions`
+- `GET /admin/tenders`
+- `POST /admin/tenders`
+- `GET /admin/results`
 
-   Rename `app(1).py` to `app.py` and place the three backend modules inside `backend/` (or adjust the imports to match your actual folder structure). Add an empty `backend/__init__.py` if it is missing.
+Therefore login, registration, tender management, and protected data views will not work until the backend implements these routes and returns the expected JSON structures. This ZIP is the changed frontend only; it does not create secure authentication by itself.
 
-2. Install backend dependencies in your Python environment:
+## Confidentiality / security
+Hiding admin pages in JavaScript is **not** security. The backend must verify a signed session/token on every protected route, enforce company-vs-admin roles, scope company submissions to the authenticated company, and only return detailed compliance results from admin-only endpoints. Do not expose the existing unprotected `/history` endpoint to company users. Admin accounts should be provisioned securely; do not hardcode a public admin password. Store password hashes, not plain-text passwords, and use HTTPS in deployment.
 
-   ```bash
-   pip install flask flask-cors pypdf
-   ```
+Expected tender shape can be an array of objects like `{ "id": 1, "title": "Tender title", "requirements": "GST, PAN", "status": "OPEN" }`. Admin result rows should include fields such as `id`, `company_name`, `tender_title`, `filename`, `status`, and `score`.
 
-3. Start Flask from the project root:
 
-   ```bash
-   python app.py
-   ```
+## Default admin login shown in the form
+- Username: `Goverment`
+- Password: `1234567890`
 
-   The API should be available at `http://127.0.0.1:5000`.
-
-4. Open `frontend/index.html` in your browser. If browser restrictions block requests from a `file://` page, serve the frontend folder instead:
-
-   ```bash
-   python -m http.server 5500 --directory frontend
-   ```
-
-   Then open `http://127.0.0.1:5500`.
-
-## API endpoints used
-
-- `GET /` — checks API connectivity
-- `POST /verify` — sends a PDF in `file` and comma-separated `requirements` fields
-- `GET /history` — loads saved reviews
-- `GET /history/<id>` — displays a saved review
-
-If your Flask backend uses a different host or port, update `API_BASE` near the top of `app.js`.
-
-## Important limitations in the supplied backend
-
-- Compliance is phrase matching against extracted PDF text; it does not contact GST, PAN, Udyam, EPFO, Income Tax, or GeM systems.
-- OCR for scanned PDFs is not included.
-- The backend exposes no login, roles, or authorization routes. This frontend therefore does not claim to provide secure company/government authentication.
-- History records store a summary and requirements, not the full itemized result. The live result screen shows itemized output immediately after verification; saved history detail can only show fields exposed by the current API.
+These values are prefilled in the frontend only. They do not create an admin account or secure the backend. The Flask backend must validate the credentials server-side and protect admin-only endpoints. Change the default password before deployment and do not use this demo credential in production.

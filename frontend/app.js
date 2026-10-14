@@ -1,224 +1,150 @@
 const API_BASE = "http://127.0.0.1:5000";
-const $ = (id) => document.getElementById(id);
-let historyRecords = [];
-let toastTimer;
+const $ = id => document.getElementById(id);
+let session = null;
+let tenders = [];
+let adminResults = [];
+const pageNames = {
+  tenders:["Available government tenders","Browse open opportunities and their published requirements."],
+  upload:["Upload bid document","Submit a PDF bid document for a selected government tender."],
+  submissions:["My submissions","Track receipt and administrative status of your own submissions."],
+  dashboard:["Admin dashboard","Monitor incoming bid submissions and verification outcomes."],
+  results:["Company upload results","Review confidential company verification results."],
+  adminTenders:["Manage tenders","Publish and manage government tender opportunities."]
+};
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),3500);}
+function showError(id,msg){const e=$(id);e.textContent=msg;e.classList.remove("hidden");}
+function clearError(id){$(id).classList.add("hidden");}
+function showOnly(id){document.querySelectorAll("main > section").forEach(s=>s.classList.add("hidden"));$(id).classList.remove("hidden");$("logout").classList.toggle("hidden",!["company-app","admin-app"].includes(id));}
+function go(name){showOnly(name);}
+document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
+$("brand-home").addEventListener("click",e=>{e.preventDefault();if(session)logout();else go("auth-choice");});
+async function api(path, options={}) {
+  const headers = new Headers(options.headers||{});
+  if(session?.token) headers.set("Authorization",`Bearer ${session.token}`);
+  const response=await fetch(API_BASE+path,{...options,headers});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error||data.message||`Request failed (${response.status})`);
+  return data;
+}
+async function checkApi(){try{await api("/");$("connection").classList.add("online");$("connection").lastChild.textContent=" API connected";}catch{$("connection").classList.remove("online");$("connection").lastChild.textContent=" API offline";}}
+function readForm(form){return Object.fromEntries(new FormData(form).entries());}
+async function login(formId,errorId,role){
+  clearError(errorId);const d=readForm($(formId));
+  try{
+    const path=role==="company"?"/auth/company/login":"/auth/admin/login";
+    const data=await api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});
+    if(!data.token) throw new Error("The server did not return an authenticated session token.");
+    session={token:data.token,role,user:data.user||data.account||{}};
+    if(role==="company"){ $("company-name").textContent=session.user.name||session.user.company_name||d.username;go("company-app");await loadTenders();showCompanyPage("tenders");}
+    else{go("admin-app");showAdminPage("dashboard");await loadAdminResults();}
+    toast("Signed in successfully.");
+  }catch(e){showError(errorId,e.message+" Ensure the backend implements authentication and role permissions.");}
+}
+$("company-login-form").addEventListener("submit",e=>{e.preventDefault();login("company-login-form","company-login-error","company");});
+$("admin-login-form").addEventListener("submit",e=>{e.preventDefault();login("admin-login-form","admin-login-error","admin");});
+$("company-register-form").addEventListener("submit",async e=>{
+  e.preventDefault();clearError("company-register-error");const submittedForm = e.currentTarget;const d=readForm(e.currentTarget);
+  try{await api("/auth/company/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});toast("Company account created. Sign in to continue.");submittedForm.reset();go("company-login");}
+  catch(err){showError("company-register-error",err.message+" Ensure the backend implements company registration and password hashing.");}
+});
+function logout(){session=null;tenders=[];adminResults=[];go("auth-choice");toast("Signed out.");}
+$("logout").addEventListener("click",logout);
+document.querySelectorAll("[data-company-page]").forEach(b=>b.addEventListener("click",()=>showCompanyPage(b.dataset.companyPage)));
+function showCompanyPage(name){
+  document.querySelectorAll("[data-company-page]").forEach(b=>b.classList.toggle("active",b.dataset.companyPage===name));
+  document.querySelectorAll("#company-app .portal-page").forEach(p=>p.classList.add("hidden"));
+  $("company-page-"+name).classList.remove("hidden");
+  $("company-page-title").textContent=pageNames[name][0];$("company-page-subtitle").textContent=pageNames[name][1];
+  if(name==="tenders")loadTenders();if(name==="submissions")loadCompanySubmissions();
+}
+document.querySelectorAll("[data-admin-page]").forEach(b=>b.addEventListener("click",()=>showAdminPage(b.dataset.adminPage)));
 
-function showToast(message) {
-  const toast = $("toast");
-  toast.textContent = message;
-  toast.classList.remove("hidden");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.add("hidden"), 3200);
-}
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
-function prettyDate(value) {
-  if (!value) return "—";
-  const d = new Date(value.includes("Z") || value.includes("+") ? value : value.replace(" ", "T") + "Z");
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString([], {year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
-}
-function statusClass(status) {
-  const s = String(status || "").toLowerCase().replaceAll("_","-");
-  if (s === "verified") return "verified";
-  if (s === "non-compliant") return "non-compliant";
-  return "manual-review";
-}
-function statusLabel(status) {
-  return String(status || "UNKNOWN").replaceAll("_"," ").replaceAll("-"," ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-}
-function pill(status) {
-  return `<span class="status-pill ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span>`;
-}
-function showPage(name) {
-  document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id === `page-${name}`));
-  document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.page === name));
-  const titles = {overview:"Overview",verify:"New verification",history:"Verification history"};
-  $("page-title").textContent = titles[name] || "Overview";
-  if (name === "history") loadHistory();
-  if (name === "overview") loadHistory(true);
-  window.scrollTo({top:0, behavior:"auto"});
-}
-document.querySelectorAll(".nav-item").forEach(btn => btn.addEventListener("click", () => showPage(btn.dataset.page)));
-["header-verify","start-verify"].forEach(id => $(id).addEventListener("click", () => showPage("verify")));
-$("view-all").addEventListener("click", () => showPage("history"));
+function showAdminPage(name) {
+  document.querySelectorAll("[data-admin-page]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.adminPage === name);
+  });
 
-async function checkApi() {
-  try {
-    const response = await fetch(`${API_BASE}/`);
-    if (!response.ok) throw new Error("API unavailable");
-    const data = await response.json();
-    $("api-dot").classList.add("online");
-    $("api-status-text").textContent = data.message ? "API connected" : "API online";
-  } catch {
-    $("api-dot").classList.remove("online");
-    $("api-status-text").textContent = "API offline";
-  }
-}
-async function loadHistory(quiet = false) {
-  try {
-    const response = await fetch(`${API_BASE}/history`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Unable to load history.");
-    historyRecords = Array.isArray(data) ? data : [];
-    renderHistory();
-    renderRecent();
-    updateStats();
-    $("history-error").classList.add("hidden");
-  } catch (error) {
-    historyRecords = [];
-    renderHistory();
-    renderRecent();
-    updateStats();
-    if (!quiet) {
-      $("history-error").textContent = `${error.message} Make sure the Flask backend is running on port 5000.`;
-      $("history-error").classList.remove("hidden");
-    }
-  }
-}
-function inferStatus(summary) {
-  const match = String(summary || "").match(/Status:\s*([^;]+)/i);
-  return match ? match[1].trim() : "MANUAL_REVIEW";
-}
-function inferScore(summary) {
-  const match = String(summary || "").match(/Score:\s*([\d.]+)%/i);
-  return match ? Number(match[1]) : 0;
-}
-function updateStats() {
-  $("stat-total").textContent = historyRecords.length;
-  $("stat-verified").textContent = historyRecords.filter(r => inferStatus(r.result_summary) === "VERIFIED").length;
-  $("stat-noncompliant").textContent = historyRecords.filter(r => inferStatus(r.result_summary) === "NON_COMPLIANT").length;
-  $("stat-manual").textContent = historyRecords.filter(r => inferStatus(r.result_summary) === "MANUAL_REVIEW").length;
-}
-function renderRecent() {
-  const target = $("recent-list");
-  if (!historyRecords.length) {
-    target.innerHTML = `<div class="empty-state">No verifications saved yet.<br>Start by uploading a bid PDF.</div>`;
+  document
+    .querySelectorAll("#admin-app .portal-page")
+    .forEach((page) => page.classList.add("hidden"));
+
+  const key = name === "tenders" ? "tenders" : name;
+  const adminPage = document.querySelector(`#admin-page-${key}`);
+
+  if (adminPage) {
+    adminPage.classList.remove("hidden");
+  } else {
+    console.error("Admin page not found:", `admin-page-${key}`);
     return;
   }
-  target.innerHTML = historyRecords.slice(0,4).map(r => `
-    <div class="recent-item">
-      <span class="file-badge">PDF</span>
-      <div class="recent-meta"><strong title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</strong><small>${escapeHtml(prettyDate(r.created_at))} · Review #${escapeHtml(r.id)}</small></div>
-      ${pill(inferStatus(r.result_summary))}
-    </div>`).join("");
-}
-function renderHistory() {
-  const query = ($("history-search")?.value || "").toLowerCase().trim();
-  const rows = historyRecords.filter(r => String(r.filename || "").toLowerCase().includes(query) || String(r.requirements || "").toLowerCase().includes(query));
-  $("history-count").textContent = `${rows.length} record${rows.length === 1 ? "" : "s"}`;
-  $("history-body").innerHTML = rows.length ? rows.map(r => `
-    <tr>
-      <td>#${escapeHtml(r.id)}</td>
-      <td><div class="doc-cell"><span class="file-badge">PDF</span><span title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span></div></td>
-      <td>${escapeHtml(r.requirements || "—")}</td>
-      <td>${pill(inferStatus(r.result_summary))} <span style="color:#8995a5;margin-left:5px">${inferScore(r.result_summary)}%</span></td>
-      <td>${escapeHtml(prettyDate(r.created_at))}</td>
-      <td><button class="view-btn" data-review-id="${escapeHtml(r.id)}">Details</button></td>
-    </tr>`).join("") : `<tr><td colspan="6" class="empty-cell">${query ? "No matching records." : "No verification history yet."}</td></tr>`;
-  document.querySelectorAll("[data-review-id]").forEach(btn => btn.addEventListener("click", () => openReview(btn.dataset.reviewId)));
-}
-$("history-search").addEventListener("input", renderHistory);
-$("refresh-history").addEventListener("click", () => loadHistory());
-$("pdf-file").addEventListener("change", () => displaySelectedFile());
-function displaySelectedFile() {
-  const file = $("pdf-file").files[0];
-  if (!file) {
-    $("file-preview").classList.add("hidden");
-    $("upload-zone").classList.remove("hidden");
-    return;
+
+  const meta = {
+    dashboard: ["Admin dashboard", "Monitor incoming bid submissions and verification outcomes."],
+    tenders: ["Manage tenders", "Publish and manage government tender opportunities."],
+    results: ["Company results", "Review company submissions and compliance outcomes."]
+  };
+
+  if (meta[name]) {
+    document.querySelector("#admin-page-title").textContent = meta[name][0];
+    document.querySelector("#admin-page-subtitle").textContent = meta[name][1];
   }
-  $("file-label").textContent = file.name;
-  $("file-name").textContent = file.name;
-  $("file-size").textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
-  $("upload-zone").classList.add("hidden");
-  $("file-preview").classList.remove("hidden");
+
+  if (name === "dashboard" || name === "results") loadAdminResults();
+  if (name === "tenders") loadAdminTenders();
 }
-$("remove-file").addEventListener("click", () => { $("pdf-file").value = ""; displaySelectedFile(); });
-$("clear-form").addEventListener("click", () => {
-  $("verify-form").reset();
-  $("requirements").value = "";
-  $("form-error").classList.add("hidden");
-  $("result-section").classList.add("hidden");
-  displaySelectedFile();
+
+function tenderList(data){return Array.isArray(data)?data:(data.tenders||data.items||[]);}
+async function loadTenders(){
+  $("tenders-list").innerHTML='<div class="empty">Loading tenders…</div>';
+  try{tenders=tenderList(await api("/tenders"));renderTenders();fillTenderSelect();}
+  catch(e){$("tenders-list").innerHTML='<div class="empty">Tenders could not be loaded.</div>';showError("tenders-error",e.message+" The backend needs a GET /tenders endpoint that returns published tenders only.");}
+}
+function renderTenders(){
+  $("tenders-list").innerHTML=tenders.length?tenders.map(t=>`<article class="tender-card"><span class="tag">OPEN TENDER</span><h3>${esc(t.title||t.name||"Untitled tender")}</h3><p><b>Tender ID:</b> ${esc(t.id??t.tender_id??"—")}</p><p><b>Requirements</b><br>${esc(Array.isArray(t.requirements)?t.requirements.join(", "):t.requirements||"See tender notice")}</p><button class="btn btn-primary" data-apply="${esc(t.id??t.tender_id)}">Submit a bid</button></article>`).join(""):'<div class="empty">No open tenders are currently available.</div>';
+  document.querySelectorAll("[data-apply]").forEach(b=>b.addEventListener("click",()=>{fillTenderSelect();$("tender-select").value=b.dataset.apply;showCompanyPage("upload");}));
+}
+function fillTenderSelect(){const s=$("tender-select");const current=s.value;s.innerHTML='<option value="">Select a tender</option>'+tenders.map(t=>`<option value="${esc(t.id??t.tender_id)}">${esc(t.title||t.name||"Tender")}</option>`).join("");if(current)s.value=current;}
+$("refresh-tenders").addEventListener("click",loadTenders);
+$("submission-form").addEventListener("submit",async e=>{
+  e.preventDefault();clearError("submission-error");const form=e.currentTarget;const file=form.elements.file.files[0];
+  if(!file)return showError("submission-error","Choose a PDF document.");
+  if(!file.name.toLowerCase().endsWith(".pdf"))return showError("submission-error","Only PDF files are supported.");
+  if(file.size>10*1024*1024)return showError("submission-error","Maximum upload size is 10 MB.");
+  const fd=new FormData();fd.append("file",file);fd.append("tender_id",form.elements.tender_id.value);fd.append("note",form.elements.note.value);
+  const btn=form.querySelector("button[type=submit]");btn.disabled=true;btn.textContent="Submitting…";
+  try{await api("/company/submissions",{method:"POST",body:fd});form.reset();toast("Bid document submitted. Government review results are not shown here.");showCompanyPage("submissions");}
+  catch(err){showError("submission-error",err.message+" The backend needs an authenticated POST /company/submissions endpoint that stores the submission and does not return confidential results.");}
+  finally{btn.disabled=false;btn.textContent="Submit bid document";}
 });
-const zone = $("upload-zone");
-["dragenter","dragover"].forEach(event => zone.addEventListener(event, e => {e.preventDefault(); zone.style.borderColor="#2864d7";}));
-["dragleave","drop"].forEach(event => zone.addEventListener(event, e => {e.preventDefault(); zone.style.borderColor="";}));
-zone.addEventListener("drop", e => {
-  const file = e.dataTransfer.files[0];
-  if (file) {
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    $("pdf-file").files = transfer.files;
-    displaySelectedFile();
-  }
+async function loadCompanySubmissions(){
+  $("company-submissions-body").innerHTML='<tr><td colspan="5" class="empty">Loading submissions…</td></tr>';
+  try{const d=await api("/company/submissions");const rows=Array.isArray(d)?d:(d.submissions||[]);
+    $("company-submissions-body").innerHTML=rows.length?rows.map(s=>`<tr><td>#${esc(s.id??s.submission_id??"—")}</td><td>${esc(s.tender_title||s.tender||"—")}</td><td>${esc(s.filename||"—")}</td><td>${esc(s.created_at||s.submitted_at||"—")}</td><td><span class="status">${esc(s.submission_status||s.status||"Submitted")}</span></td></tr>`).join(""):'<tr><td colspan="5" class="empty">No submissions yet.</td></tr>';
+  }catch(e){$("company-submissions-body").innerHTML='<tr><td colspan="5" class="empty">Submissions could not be loaded.</td></tr>';showError("submissions-error",e.message+" The backend needs GET /company/submissions filtered to the signed-in company and must omit compliance results.");}
+}
+$("refresh-submissions").addEventListener("click",loadCompanySubmissions);
+$("tender-form").addEventListener("submit",async e=>{
+  e.preventDefault();clearError("tender-error");const d=readForm(e.currentTarget);
+  try{await api("/admin/tenders",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});e.target.closest("form").reset();toast("Tender published.");await loadAdminTenders();await loadTenders();}
+  catch(err){showError("tender-error",err.message+" The backend needs an admin-only POST /admin/tenders endpoint.");}
 });
-$("verify-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const file = $("pdf-file").files[0];
-  const requirements = $("requirements").value.trim();
-  $("form-error").classList.add("hidden");
-  if (!file) return showFormError("Please select a PDF file.");
-  if (!file.name.toLowerCase().endsWith(".pdf")) return showFormError("Only PDF files are supported.");
-  if (file.size > 10 * 1024 * 1024) return showFormError("The PDF exceeds the 10 MB limit.");
-  if (!requirements || !requirements.split(",").some(x => x.trim())) return showFormError("Enter at least one requirement, separated by commas.");
-  const button = $("submit-btn");
-  button.disabled = true; button.textContent = "Checking document…";
-  const form = new FormData();
-  form.append("file", file);
-  form.append("requirements", requirements);
-  try {
-    const response = await fetch(`${API_BASE}/verify`, {method:"POST", body:form});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Verification failed.");
-    renderResult(data);
-    $("result-section").classList.remove("hidden");
-    $("result-section").scrollIntoView({behavior:"auto",block:"start"});
-    showToast("Verification completed and saved to history.");
-    await loadHistory(true);
-  } catch (error) {
-    showFormError(`${error.message} Check that your backend is running at ${API_BASE}.`);
-  } finally {
-    button.disabled = false; button.innerHTML = 'Run verification <span>→</span>';
-  }
-});
-function showFormError(message) {
-  $("form-error").textContent = message;
-  $("form-error").classList.remove("hidden");
+async function loadAdminTenders(){
+  $("admin-tenders-list").innerHTML='<div class="empty">Loading tenders…</div>';
+  try{const list=tenderList(await api("/admin/tenders"));$("admin-tenders-list").innerHTML=list.length?list.map(t=>`<article class="tender-card"><h3>${esc(t.title||"Untitled tender")}</h3><p>${esc(t.requirements||"")}</p><span class="tag">${esc(t.status||"PUBLISHED")}</span></article>`).join(""):'<div class="empty">No tenders found.</div>';}
+  catch(e){$("admin-tenders-list").innerHTML='<div class="empty">Tender list unavailable.</div>';showError("tender-error",e.message+" The backend needs GET /admin/tenders.");}
 }
-function resultGroup(title, items) {
-  return `<div class="result-group"><h4>${escapeHtml(title)} <span style="color:#8995a5;font-weight:400">(${items.length})</span></h4>${items.length ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<div class="none">No items</div>`}</div>`;
+function normalizeStatus(v){return String(v||"MANUAL_REVIEW").toUpperCase().replaceAll("-","_");}
+function statusBadge(v){const s=normalizeStatus(v);const c=s.toLowerCase().replaceAll("_","-");return `<span class="status ${esc(c)}">${esc(s.replaceAll("_"," "))}</span>`;}
+async function loadAdminResults(){
+  $("admin-recent").innerHTML='<div class="empty">Loading results…</div>';
+  try{
+    const d=await api("/admin/results");adminResults=Array.isArray(d)?d:(d.results||d.submissions||[]);
+    const counts={VERIFIED:0,NON_COMPLIANT:0,MANUAL_REVIEW:0};adminResults.forEach(r=>{const s=normalizeStatus(r.status);if(counts[s]!==undefined)counts[s]++;});
+    $("admin-total").textContent=adminResults.length;$("admin-verified").textContent=counts.VERIFIED;$("admin-noncompliant").textContent=counts.NON_COMPLIANT;$("admin-manual").textContent=counts.MANUAL_REVIEW;
+    $("admin-recent").innerHTML=adminResults.slice(0,4).map(r=>`<article class="result-card"><h3>${esc(r.filename||"Bid submission")}</h3><p><b>Company:</b> ${esc(r.company_name||r.company||"—")}</p><p><b>Tender:</b> ${esc(r.tender_title||"—")}</p><p><b>Status:</b> ${statusBadge(r.status)}</p><p><b>Score:</b> ${esc(r.score??"—")}${r.score===undefined?"":"%"}</p></article>`).join("")||'<div class="empty">No company submissions found.</div>';
+    $("admin-results-body").innerHTML=adminResults.length?adminResults.map((r,i)=>`<tr><td>#${esc(r.id??r.submission_id??i+1)}</td><td>${esc(r.company_name||r.company||"—")}</td><td>${esc(r.tender_title||"—")}</td><td>${esc(r.filename||"—")}</td><td>${statusBadge(r.status)}</td><td>${esc(r.score??"—")}${r.score===undefined?"":"%"}</td><td>${esc(r.details||r.message||"Human review may be required.")}</td></tr>`).join(""):'<tr><td colspan="7" class="empty">No results found.</td></tr>';
+  }catch(e){$("admin-recent").innerHTML='<div class="empty">Admin results are unavailable.</div>';showError("admin-results-error",e.message+" The backend needs an admin-only GET /admin/results endpoint that joins submissions, company, tender and verification result data.");$("admin-results-body").innerHTML='<tr><td colspan="7" class="empty">Results endpoint unavailable.</td></tr>';}
 }
-function renderResult(data) {
-  const target = $("result-section");
-  target.innerHTML = `
-    <div class="result-header"><div><h3>Verification result</h3><p>${escapeHtml(data.filename)} · Review #${escapeHtml(data.review_id)}</p><div style="margin-top:12px">${pill(data.status)}</div></div><div class="score-circle"><strong>${Number(data.score || 0)}%</strong><small>COMPLIANCE</small></div></div>
-    <div class="result-summary"><strong style="font-size:11px">Assessment</strong><p>${escapeHtml(data.message || "Review completed.")}</p></div>
-    <div class="result-columns">${resultGroup("Matched requirements", data.matched_requirements || [])}${resultGroup("Missing requirements", data.missing_requirements || [])}${resultGroup("Manual review", data.manual_review || [])}</div>
-    <div class="notice"><span class="notice-icon">i</span><div><strong>Human confirmation required for critical decisions</strong><p>This result is based on phrase matching in extracted PDF text. It is not independent validation of registrations or statutory compliance.</p></div></div>`;
-}
-async function openReview(id) {
-  $("modal-content").innerHTML = `<div class="empty-state">Loading details…</div>`;
-  $("detail-modal").classList.remove("hidden");
-  try {
-    const response = await fetch(`${API_BASE}/history/${encodeURIComponent(id)}`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Could not load record.");
-    $("modal-content").innerHTML = `<dl class="detail-grid">
-      <dt>Review ID</dt><dd>#${escapeHtml(data.id)}</dd>
-      <dt>Document</dt><dd>${escapeHtml(data.filename)}</dd>
-      <dt>Requirements</dt><dd>${escapeHtml(data.requirements)}</dd>
-      <dt>Created</dt><dd>${escapeHtml(prettyDate(data.created_at))}</dd>
-      <dt>Status</dt><dd>${pill(inferStatus(data.result_summary))}</dd>
-      <dt>Score</dt><dd>${inferScore(data.result_summary)}%</dd>
-    </dl><div class="detail-summary">${escapeHtml(data.result_summary)}</div>`;
-  } catch (error) {
-    $("modal-content").innerHTML = `<div class="form-error">${escapeHtml(error.message)}</div>`;
-  }
-}
-$("close-modal").addEventListener("click", () => $("detail-modal").classList.add("hidden"));
-$("detail-modal").addEventListener("click", e => {if (e.target === $("detail-modal")) $("detail-modal").classList.add("hidden");});
-document.addEventListener("keydown", e => {if (e.key === "Escape") $("detail-modal").classList.add("hidden");});
-checkApi();
-loadHistory(true);
+$("admin-refresh").addEventListener("click",loadAdminResults);$("admin-results-refresh").addEventListener("click",loadAdminResults);
+checkApi();go("auth-choice");

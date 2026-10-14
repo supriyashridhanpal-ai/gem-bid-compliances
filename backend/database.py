@@ -1,6 +1,7 @@
 ﻿
 import sqlite3
 import json
+import sqlite3
 from pathlib import Path
 
 DB_NAME = Path(__file__).resolve().parent / "reviews.db"
@@ -14,6 +15,7 @@ def get_db():
 
 
 def initialize_database():
+    """Create missing tables without deleting existing records."""
     with get_db() as conn:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS companies (
@@ -83,6 +85,53 @@ def initialize_database():
         }.items():
             if name not in columns:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {name} {kind}")
+        columns = conn.execute("PRAGMA table_info(reviews)").fetchall()
+        existing_columns = {column["name"] for column in columns}
+        for column_name in ("summary", "result_summary"):
+            if column_name not in existing_columns:
+                conn.execute(f"ALTER TABLE reviews ADD COLUMN {column_name} TEXT")
+
+
+def save_review(filename, requirements, summary):
+    """Save a verification summary using the existing database schema."""
+    with get_db() as conn:
+        columns = conn.execute("PRAGMA table_info(reviews)").fetchall()
+        required_columns = [
+            col["name"] for col in columns
+            if col["notnull"] and col["dflt_value"] is None and col["pk"] == 0
+        ]
+        values = {
+            "filename": filename,
+            "requirements": requirements,
+            "summary": summary,
+            "result_summary": summary,
+        }
+        supported_columns = set(values)
+        unsupported = [name for name in required_columns if name not in supported_columns]
+        if unsupported:
+            raise RuntimeError(
+                "The reviews table has additional required columns: " + ", ".join(unsupported)
+            )
+        insert_columns = [name for name in values if name in {col["name"] for col in columns}]
+        placeholders = ", ".join("?" for _ in insert_columns)
+        column_sql = ", ".join(insert_columns)
+        parameters = [values[name] for name in insert_columns]
+        cursor = conn.execute(
+            f"INSERT INTO reviews ({column_sql}) VALUES ({placeholders})", parameters
+        )
+        return cursor.lastrowid
+
+
+def get_all_reviews():
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM reviews ORDER BY id DESC").fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_review_by_id(review_id):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
+        return dict(row) if row else None
 
 
 def register_company(name, email, username, password_hash):
@@ -94,6 +143,11 @@ def register_company(name, email, username, password_hash):
              username.strip(), password_hash)
         )
         return cur.lastrowid
+        cursor = conn.execute(
+            "INSERT INTO companies (name, email, username, password) VALUES (?, ?, ?, ?)",
+            (name, email, username, password_hash),
+        )
+        return cursor.lastrowid
 
 
 def login_company(username):
@@ -258,6 +312,7 @@ def get_dashboard_statistics(company_id):
             "verified_documents": matched,
             "manual_reviews": manual
         }
+
 
 
 if __name__ == "__main__":

@@ -1,82 +1,144 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GeM Verify | Bid Compliance</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>GeM Verify | Bid Compliance Portal</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">G</div>
-        <div><strong>GeM Verify</strong><span>Bid Compliance Platform</span></div>
+  <header class="topbar">
+    <a class="brand" href="#" id="brand-home"><span class="brand-mark">G</span><span><b>GeM Verify</b><small>Bid Compliance Platform</small></span></a>
+    <div class="top-right"><span id="connection" class="connection"><i></i> Checking API</span><button id="logout" class="btn btn-outline hidden">Sign out</button></div>
+  </header>
+  <main class="wrap">
+    <section id="auth-choice" class="auth-layout">
+      <div class="intro">
+        <span class="eyebrow">GOVERNMENT E-MARKETPLACE</span>
+        <h1>Bid compliance,<br><span>made clearer.</span></h1>
+        <p>A dedicated workspace for companies to find tenders and submit bid documents, and for authorized government reviewers to review submissions.</p>
+        <div class="trust-note"><b>Separate workspaces</b><span>Company submissions and government review results are intended to remain separate.</span></div>
       </div>
-      <div class="nav-label">WORKSPACE</div>
-      <button class="nav-item active" data-page="overview"><span class="nav-icon">▦</span> Overview</button>
-      <button class="nav-item" data-page="verify"><span class="nav-icon">✓</span> Verify a bid</button>
-      <button class="nav-item" data-page="history"><span class="nav-icon">◷</span> Verification history</button>
-      <div class="sidebar-bottom">
-        <div class="secure-note"><span class="secure-icon">◇</span><div><strong>Document-first review</strong><p>PDFs are processed for text and checked against your requirements.</p></div></div>
-        <div class="user-card"><div class="avatar">GV</div><div><strong>Verification desk</strong><span>Workspace</span></div><span class="user-dots">•••</span></div>
+      <div class="auth-card">
+        <span class="eyebrow">CHOOSE YOUR PORTAL</span><h2>Sign in to continue</h2>
+        <p class="muted">Select the workspace that applies to you.</p>
+        <button class="role-choice" data-go="company-login"><span class="role-icon">C</span><span><b>Company portal</b><small>Browse tenders and submit bid documents</small></span><span class="arrow">→</span></button>
+        <button class="role-choice" data-go="admin-login"><span class="role-icon gov">G</span><span><b>Government / Admin</b><small>Review company submissions and results</small></span><span class="arrow">→</span></button>
+        <p class="footnote">Company registration is available from the company sign-in page.</p>
       </div>
-    </aside>
+    </section>
 
-    <main class="main">
-      <header class="topbar">
-        <div><div class="eyebrow">GOVERNMENT PROCUREMENT / COMPLIANCE</div><h1 id="page-title">Overview</h1></div>
-        <div class="top-actions"><span class="api-status"><i id="api-dot"></i><span id="api-status-text">Checking API…</span></span><button class="primary-btn small" id="header-verify">+ New verification</button></div>
-      </header>
+    <section id="company-login" class="auth-card narrow hidden">
+      <button class="back-link" data-go="auth-choice">← Back to portal selection</button>
+      <span class="eyebrow">COMPANY WORKSPACE</span><h2>Company sign in</h2><p class="muted">Use your registered company account.</p>
+      <form id="company-login-form" class="form">
+        <label>Username or email<input name="username" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <div id="company-login-error" class="alert hidden"></div>
+        <button class="btn btn-primary" type="submit">Sign in to company portal</button>
+      </form>
+      <p class="center muted">New to GeM Verify? <button class="inline-link" data-go="company-register">Register a company account</button></p>
+    </section>
 
-      <section class="page active" id="page-overview">
-        <div class="welcome-row"><div><h2>Bid compliance workspace</h2><p>Review tender documents against required eligibility and statutory criteria.</p></div><div class="date-chip">● &nbsp; Local workspace</div></div>
-        <div class="stat-grid">
-          <article class="stat-card"><div class="stat-top"><span>Total reviews</span><span class="stat-icon blue">▤</span></div><strong id="stat-total">—</strong><p>Saved verification records</p></article>
-          <article class="stat-card"><div class="stat-top"><span>Verified</span><span class="stat-icon green">✓</span></div><strong id="stat-verified">—</strong><p>All listed requirements found</p></article>
-          <article class="stat-card"><div class="stat-top"><span>Non-compliant</span><span class="stat-icon red">!</span></div><strong id="stat-noncompliant">—</strong><p>Requirements not found</p></article>
-          <article class="stat-card"><div class="stat-top"><span>Manual review</span><span class="stat-icon amber">⌕</span></div><strong id="stat-manual">—</strong><p>Needs human confirmation</p></article>
-        </div>
-        <div class="content-grid">
-          <article class="panel intro-panel"><div class="panel-heading"><div><div class="eyebrow">START HERE</div><h3>Verify a bid document</h3></div><span class="panel-icon">↑</span></div><p class="panel-copy">Upload a readable PDF and specify the requirements to check. The system extracts text and reports matched, missing, and manual-review items.</p>
-          <div class="steps"><div class="step"><span>01</span><div><strong>Upload PDF</strong><p>Maximum file size: 10 MB</p></div></div><div class="step"><span>02</span><div><strong>Set requirements</strong><p>Separate each requirement with a comma</p></div></div><div class="step"><span>03</span><div><strong>Review results</strong><p>Use the result as an aid, not a final legal decision</p></div></div></div>
-          <button class="primary-btn" id="start-verify">Start verification <span>→</span></button></article>
-          <article class="panel recent-panel"><div class="panel-heading"><div><div class="eyebrow">LATEST ACTIVITY</div><h3>Recent verifications</h3></div><button class="text-btn" id="view-all">View all →</button></div><div id="recent-list" class="recent-list"><div class="empty-state">Loading saved reviews…</div></div></article>
-        </div>
-        <div class="notice"><span class="notice-icon">i</span><div><strong>Important</strong><p>Current checks use text matching. They do not independently validate GST status, PAN records, turnover evidence, or legal eligibility. Confirm critical documents manually.</p></div></div>
-      </section>
+    <section id="company-register" class="auth-card narrow hidden">
+      <button class="back-link" data-go="company-login">← Back to company sign in</button>
+      <span class="eyebrow">COMPANY WORKSPACE</span><h2>Register company</h2><p class="muted">Create an account to access available government tenders.</p>
+      <form id="company-register-form" class="form">
+        <label>Company / business name<input name="name" autocomplete="organization" required></label>
+        <label>Business email<input name="email" type="email" autocomplete="email" required></label>
+        <label>Username<input name="username" autocomplete="username" required minlength="3"></label>
+        <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="8"><small>Use at least 8 characters.</small></label>
+        <div id="company-register-error" class="alert hidden"></div>
+        <button class="btn btn-primary" type="submit">Create company account</button>
+      </form>
+    </section>
 
-      <section class="page" id="page-verify">
-        <div class="page-intro"><div><h2>New verification</h2><p>Submit a PDF and the tender requirements you want to check.</p></div><span class="required-note">* Required fields</span></div>
-        <div class="verify-layout">
-          <form id="verify-form" class="panel form-panel">
-            <div class="section-title"><span class="section-number">01</span><div><h3>Bid document</h3><p>Choose the PDF file to review.</p></div></div>
-            <label class="upload-zone" id="upload-zone" for="pdf-file"><input id="pdf-file" type="file" accept="application/pdf,.pdf" required /><span class="upload-symbol">↑</span><strong id="file-label">Drop your PDF here or <em>browse files</em></strong><small>PDF only · Maximum 10 MB</small></label>
-            <div class="file-preview hidden" id="file-preview"><span class="pdf-icon">PDF</span><div><strong id="file-name"></strong><small id="file-size"></small></div><button type="button" class="remove-file" id="remove-file" aria-label="Remove file">×</button></div>
-            <div class="section-title requirements-title"><span class="section-number">02</span><div><h3>Tender requirements</h3><p>Enter exact terms or phrases to look for in the PDF.</p></div></div>
-            <label for="requirements">Requirements <span class="muted">(comma-separated)</span></label>
-            <textarea id="requirements" rows="4" required>GST, PAN, Turnover, Udyam/MSME, Make in India, EPFO</textarea>
-            <div class="field-hint">Tip: the current backend checks whether each phrase appears in the extracted document text.</div>
-            <div class="form-error hidden" id="form-error" role="alert"></div>
-            <div class="form-actions"><button type="button" class="secondary-btn" id="clear-form">Clear form</button><button type="submit" class="primary-btn" id="submit-btn">Run verification <span>→</span></button></div>
-          </form>
-          <aside class="panel side-info"><div class="side-info-icon">✓</div><h3>What gets checked?</h3><p>Your backend compares extracted PDF text with the requirement list and returns a status and compliance score.</p><div class="legend-row"><span class="status-dot verified"></span><div><strong>Verified</strong><small>All listed phrases were found.</small></div></div><div class="legend-row"><span class="status-dot non-compliant"></span><div><strong>Non-compliant</strong><small>At least one phrase was not found.</small></div></div><div class="legend-row"><span class="status-dot manual-review"></span><div><strong>Manual review</strong><small>Human confirmation is required.</small></div></div><div class="side-warning">Scanned PDFs without a text layer may not be readable. OCR is not currently included in the supplied backend.</div></aside>
-        </div>
-        <section id="result-section" class="panel result-panel hidden" aria-live="polite"></section>
-      </section>
+    <section id="admin-login" class="auth-card narrow hidden">
+      <button class="back-link" data-go="auth-choice">← Back to portal selection</button>
+      <span class="eyebrow">RESTRICTED WORKSPACE</span><h2>Government admin sign in</h2><p class="muted">For authorized government procurement reviewers only.</p>
+      <form id="admin-login-form" class="form">
+        <label>Admin username<input name="username" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <div id="admin-login-error" class="alert hidden"></div>
+        <button class="btn btn-primary" type="submit">Sign in as admin</button>
+      </form>
+      <p class="footnote">Admin accounts must be provisioned securely by the backend operator. There is no public admin registration.</p>
+    </section>
 
-      <section class="page" id="page-history">
-        <div class="page-intro"><div><h2>Verification history</h2><p>Browse previously saved document checks.</p></div><button class="secondary-btn" id="refresh-history">↻ Refresh</button></div>
-        <div class="panel table-panel"><div class="table-toolbar"><div><strong>Saved reviews</strong><p id="history-count">Loading records…</p></div><div class="search-box"><span>⌕</span><input type="search" id="history-search" placeholder="Search filenames…" /></div></div>
-          <div class="table-wrap"><table><thead><tr><th>REVIEW ID</th><th>DOCUMENT</th><th>REQUIREMENTS</th><th>SUMMARY</th><th>DATE</th><th></th></tr></thead><tbody id="history-body"><tr><td colspan="6" class="empty-cell">Loading history…</td></tr></tbody></table></div>
-        </div>
-        <div id="history-error" class="form-error hidden"></div>
-      </section>
-      <footer class="footer"><span>GeM Verify · Bid Compliance Verification</span><span>For review assistance only</span></footer>
-    </main>
-  </div>
-  <div class="toast hidden" id="toast" role="status"></div>
-  <div class="modal-backdrop hidden" id="detail-modal"><div class="modal panel"><div class="modal-heading"><div><div class="eyebrow">SAVED RECORD</div><h3>Verification details</h3></div><button class="modal-close" id="close-modal">×</button></div><div id="modal-content"></div></div></div>
+    <section id="company-app" class="portal hidden">
+      <aside class="side-nav">
+        <div class="nav-user"><span class="avatar">C</span><span><b id="company-name">Company</b><small>Company workspace</small></span></div>
+        <button class="nav-btn active" data-company-page="tenders">▦ &nbsp; Available tenders</button>
+        <button class="nav-btn" data-company-page="upload">↑ &nbsp; Upload bid document</button>
+        <button class="nav-btn" data-company-page="submissions">◷ &nbsp; My submissions</button>
+        <div class="side-note"><b>Confidential review</b><p>Government verification scores and internal review notes are not displayed in this company workspace.</p></div>
+      </aside>
+      <div class="portal-content">
+        <div class="page-heading"><div><span class="eyebrow">COMPANY PORTAL</span><h1 id="company-page-title">Available government tenders</h1><p id="company-page-subtitle">Browse open opportunities and their published requirements.</p></div></div>
+        <section id="company-page-tenders" class="portal-page">
+          <div class="toolbar"><div><h2>Open tenders</h2><p class="muted">Only tenders published by the government should appear here.</p></div><button id="refresh-tenders" class="btn btn-outline">Refresh</button></div>
+          <div id="tenders-list" class="cards"><div class="empty">Loading tenders…</div></div>
+          <div id="tenders-error" class="alert hidden"></div>
+        </section>
+        <section id="company-page-upload" class="portal-page hidden">
+          <div class="panel">
+            <h2>Submit a bid document</h2><p class="muted">Choose a published tender and upload its PDF bid document.</p>
+            <form id="submission-form" class="form">
+              <label>Government tender<select id="tender-select" name="tender_id" required><option value="">Select a tender</option></select></label>
+              <label>Bid document (PDF, max 10 MB)<input type="file" name="file" accept=".pdf,application/pdf" required></label>
+              <label>Additional note <span class="muted">(optional)</span><textarea name="note" rows="3" placeholder="Add a note for the submission desk"></textarea></label>
+              <div id="submission-error" class="alert hidden"></div>
+              <button class="btn btn-primary" type="submit">Submit bid document</button>
+            </form>
+            <p class="footnote">This screen confirms submission only. Confidential compliance results are reserved for authorized government reviewers.</p>
+          </div>
+        </section>
+        <section id="company-page-submissions" class="portal-page hidden">
+          <div class="toolbar"><div><h2>My submissions</h2><p class="muted">Track receipt and administrative status of your own submissions.</p></div><button id="refresh-submissions" class="btn btn-outline">Refresh</button></div>
+          <div class="table-wrap"><table><thead><tr><th>SUBMISSION</th><th>TENDER</th><th>DOCUMENT</th><th>SUBMITTED</th><th>STATUS</th></tr></thead><tbody id="company-submissions-body"><tr><td colspan="5" class="empty">Loading submissions…</td></tr></tbody></table></div>
+          <div id="submissions-error" class="alert hidden"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="admin-app" class="portal hidden">
+      <aside class="side-nav">
+        <div class="nav-user"><span class="avatar gov">G</span><span><b>Government admin</b><small>Restricted workspace</small></span></div>
+        <button class="nav-btn active" data-admin-page="dashboard">▦ &nbsp; Admin dashboard</button>
+        <button class="nav-btn" data-admin-page="tenders">＋ &nbsp; Manage tenders</button>
+        <button class="nav-btn" data-admin-page="results">▤ &nbsp; Company results</button>
+        <div class="side-note"><b>Authorized access</b><p>Review uploaded bid documents and compliance results. Confirm critical requirements manually.</p></div>
+      </aside>
+      <div class="portal-content">
+        <div class="page-heading"><div><span class="eyebrow">GOVERNMENT WORKSPACE</span><h1 id="admin-page-title">Admin dashboard</h1><p id="admin-page-subtitle">Monitor incoming bid submissions and verification outcomes.</p></div></div>
+        <section id="admin-page-dashboard" class="portal-page">
+          <div class="stats">
+            <article class="stat"><span>Total submissions</span><b id="admin-total">—</b></article>
+            <article class="stat"><span>Verified</span><b id="admin-verified">—</b></article>
+            <article class="stat"><span>Non-compliant</span><b id="admin-noncompliant">—</b></article>
+            <article class="stat"><span>Manual review</span><b id="admin-manual">—</b></article>
+          </div>
+          <div class="panel"><div class="toolbar"><div><h2>Latest company submissions</h2><p class="muted">Detailed compliance results are shown only in this government workspace.</p></div><button class="btn btn-outline" id="admin-refresh">Refresh</button></div><div id="admin-recent" class="cards"><div class="empty">Loading results…</div></div></div>
+        </section>
+        <section id="admin-page-tenders" class="portal-page hidden">
+          <div class="panel"><h2>Publish a government tender</h2><p class="muted">Publish the tender title and requirements for companies to view.</p>
+            <form id="tender-form" class="form">
+              <label>Tender title<input name="title" required></label>
+              <label>Published requirements <textarea name="requirements" rows="4" required placeholder="GST, PAN, Turnover"></textarea></label>
+              <div id="tender-error" class="alert hidden"></div><button class="btn btn-primary" type="submit">Publish tender</button>
+            </form>
+          </div>
+          <div class="panel"><h2>Existing tenders</h2><div id="admin-tenders-list" class="cards"><div class="empty">Loading tenders…</div></div></div>
+        </section>
+        <section id="admin-page-results" class="portal-page hidden">
+          <div class="toolbar"><div><h2>Company upload results</h2><p class="muted">Internal review information for authorized government users.</p></div><button class="btn btn-outline" id="admin-results-refresh">Refresh</button></div>
+          <div class="table-wrap"><table><thead><tr><th>ID</th><th>COMPANY</th><th>TENDER</th><th>DOCUMENT</th><th>STATUS</th><th>SCORE</th><th>DETAILS</th></tr></thead><tbody id="admin-results-body"><tr><td colspan="7" class="empty">Loading results…</td></tr></tbody></table></div>
+          <div id="admin-results-error" class="alert hidden"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden" role="status"></div>
   <script src="app.js"></script>
 </body>
 </html>
