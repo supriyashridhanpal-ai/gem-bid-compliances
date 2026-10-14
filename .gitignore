@@ -1,0 +1,12 @@
+# Python cache files
+__pycache__/
+*.pyc
+
+# Local database
+backend/reviews.db
+
+# Uploaded documents
+backend/uploads/
+
+# Test PDF
+sample_bid.pdf
