@@ -2,7 +2,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 
 from backend.extraction import extract_text
 from backend.compliance import check_compliance
@@ -14,16 +13,15 @@ from backend.database import (
 )
 
 app = Flask(__name__)
-CORS(app)
 
-# Set a maximum upload size of 10 MB.
+# Maximum upload size: 10 MB
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
-# Temporary storage for uploaded PDF files.
+# Temporary PDF upload directory
 UPLOAD_FOLDER = Path(__file__).resolve().parent / "uploads"
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# Create the database table if it does not exist.
+# Initialize the SQLite database
 initialize_database()
 
 
@@ -31,26 +29,33 @@ initialize_database()
 def home():
     return jsonify({
         "message": "GeM Bid Compliance Verification API is running."
-    })
+    }), 200
 
 
 @app.route("/verify", methods=["POST"])
 def verify():
-    # Check whether a file was uploaded.
+    # 1. Check uploaded file
     if "file" not in request.files:
-        return jsonify({"error": "No PDF file uploaded."}), 400
+        return jsonify({
+            "error": "No PDF file uploaded."
+        }), 400
 
     uploaded_file = request.files["file"]
 
     if not uploaded_file.filename:
-        return jsonify({"error": "Please select a PDF file."}), 400
+        return jsonify({
+            "error": "Please select a PDF file."
+        }), 400
 
     if Path(uploaded_file.filename).suffix.lower() != ".pdf":
-        return jsonify({"error": "Only PDF files are supported."}), 400
+        return jsonify({
+            "error": "Only PDF files are supported."
+        }), 400
 
-    # Get tender requirements from the form.
+    # 2. Read tender requirements
     requirements_text = request.form.get(
-        "requirements", "GST, PAN, Turnover"
+        "requirements",
+        "GST, PAN, Turnover"
     )
 
     requirements = [
@@ -61,23 +66,25 @@ def verify():
 
     if not requirements:
         return jsonify({
-            "error": "Please provide at least one tender requirement."
+            "error": "Please provide at least one requirement."
         }), 400
 
-    # Create a unique temporary filename.
+    # 3. Save PDF temporarily
     temporary_path = UPLOAD_FOLDER / f"{uuid4().hex}.pdf"
 
     try:
-        # Save the uploaded file temporarily.
         uploaded_file.save(temporary_path)
 
-        # Extract text from the PDF.
+        # 4. Extract PDF text
         extracted_text = extract_text(temporary_path)
 
-        # Check the extracted text against the requirements.
-        result = check_compliance(extracted_text, requirements)
+        # 5. Check compliance
+        result = check_compliance(
+            extracted_text,
+            requirements
+        )
 
-        # Prepare a summary for the database.
+        # 6. Prepare summary for SQLite
         summary = (
             f"Status: {result['status']}; "
             f"Score: {result['score']}%; "
@@ -86,53 +93,63 @@ def verify():
             f"Manual review: {len(result['manual_review'])}"
         )
 
-        # Save the verification history.
+        # 7. Save verification history
         review_id = save_review(
             uploaded_file.filename,
             ", ".join(requirements),
-            summary,
+            summary
         )
 
-        # Return the verification result to the frontend.
+        # 8. Return result
         return jsonify({
             "review_id": review_id,
             "filename": uploaded_file.filename,
             "status": result["status"],
             "score": result["score"],
-            "matched_requirements": result["matched_requirements"],
-            "missing_requirements": result["missing_requirements"],
+            "matched_requirements": result[
+                "matched_requirements"
+            ],
+            "missing_requirements": result[
+                "missing_requirements"
+            ],
             "manual_review": result["manual_review"],
-            "message": result["message"],
+            "message": result["message"]
         }), 200
 
     except (ValueError, FileNotFoundError) as error:
-        return jsonify({"error": str(error)}), 400
-
-    except Exception:
-        app.logger.exception("Document verification failed.")
         return jsonify({
-            "error": "Verification failed due to a server error."
+            "error": str(error)
+        }), 400
+
+    except Exception as error:
+        # Log the full error in the Flask terminal
+        app.logger.exception("Document verification failed.")
+
+        # Show the error type and message for debugging
+        return jsonify({
+            "error": str(error),
+            "type": type(error).__name__
         }), 500
 
     finally:
-        # Remove the temporary PDF after processing.
+        # Remove the temporary PDF after processing
         if temporary_path.exists():
             temporary_path.unlink()
 
 
 @app.route("/history", methods=["GET"])
 def history():
-    """Return saved verification history."""
     return jsonify(get_all_reviews()), 200
 
 
 @app.route("/history/<int:review_id>", methods=["GET"])
 def review_details(review_id):
-    """Return one saved verification record."""
     review = get_review_by_id(review_id)
 
     if review is None:
-        return jsonify({"error": "Verification record not found."}), 404
+        return jsonify({
+            "error": "Verification record not found."
+        }), 404
 
     return jsonify(review), 200
 
