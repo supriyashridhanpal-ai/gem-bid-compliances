@@ -1,121 +1,73 @@
+
 import re
 
 
 def normalize_text(text):
-    """Convert text to lowercase and normalize whitespace."""
-    return re.sub(r"\s+", " ", text.lower()).strip()
+    """Convert text to lowercase and remove extra spaces."""
+    text = text.lower()
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def check_compliance(extracted_text, requirements):
     """
-    Compare extracted bid document text with tender requirements.
-
-    Args:
-        extracted_text (str): Text extracted from the uploaded PDF.
-        requirements (list): Required items, such as ["GST", "PAN"].
-
-    Returns:
-        dict: Compliance status, score, matched items,
-              missing items, and items requiring manual review.
+    Compare tender requirements with the extracted PDF text.
     """
 
-    if not isinstance(extracted_text, str) or not extracted_text.strip():
+    if not extracted_text or not extracted_text.strip():
         return {
-            "status": "MANUAL_REVIEW",
-            "score": 0.0,
+            "status": "Manual Review",
+            "score": 0,
             "matched_requirements": [],
-            "missing_requirements": [],
-            "manual_review": list(requirements)
-            if isinstance(requirements, list) else [],
-            "message": "No readable document text is available."
-        }
-
-    if not isinstance(requirements, list) or not requirements:
-        return {
-            "status": "MANUAL_REVIEW",
-            "score": 0.0,
-            "matched_requirements": [],
-            "missing_requirements": [],
-            "manual_review": [],
-            "message": "Please provide a list of tender requirements."
+            "missing_requirements": requirements,
+            "manual_review": True,
+            "message": "No readable text found. Manual review is required."
         }
 
     document_text = normalize_text(extracted_text)
 
-    matched = []
-    missing = []
-    manual_review = []
+    matched_requirements = []
+    missing_requirements = []
 
-    # Check each requirement separately
     for requirement in requirements:
-        requirement_text = str(requirement).strip()
+        requirement = requirement.strip()
 
-        if not requirement_text:
+        if not requirement:
             continue
 
-        normalized_requirement = normalize_text(requirement_text)
+        normalized_requirement = normalize_text(requirement)
 
-        # Values that need human or specialized validation
-        if normalized_requirement.startswith("verify:"):
-            manual_review.append(
-                requirement_text.split(":", 1)[1].strip()
-            )
-            continue
-
-        # Check whether the required phrase appears in the document
         if normalized_requirement in document_text:
-            matched.append(requirement_text)
+            matched_requirements.append(requirement)
         else:
-            missing.append(requirement_text)
+            missing_requirements.append(requirement)
 
-    total = len(matched) + len(missing) + len(manual_review)
+    total = len(matched_requirements) + len(missing_requirements)
 
-    score = round((len(matched) / total) * 100, 2) if total else 0.0
-
-    # Determine the overall result
-    if manual_review:
-        status = "MANUAL_REVIEW"
-    elif missing:
-        status = "NON_COMPLIANT"
+    if total == 0:
+        score = 0
+        status = "Manual Review"
+        manual_review = True
+        message = "Enter at least one valid requirement."
     else:
-        status = "VERIFIED"
+        score = round(
+            (len(matched_requirements) / total) * 100
+        )
+
+        if not missing_requirements:
+            status = "Match"
+            manual_review = False
+            message = "All entered requirements were found."
+        else:
+            status = "Manual Review"
+            manual_review = True
+            message = "Some requirements were not found in the document."
 
     return {
         "status": status,
         "score": score,
-        "matched_requirements": matched,
-        "missing_requirements": missing,
+        "matched_requirements": matched_requirements,
+        "missing_requirements": missing_requirements,
         "manual_review": manual_review,
-        "message": (
-            "All listed requirements were found in the document."
-            if status == "VERIFIED"
-            else
-            "Some requirements are missing."
-            if status == "NON_COMPLIANT"
-            else
-            "Human review is required before confirming compliance."
-        )
+        "message": message
     }
-
-
-# Test the compliance module independently
-if __name__ == "__main__":
-    sample_text = """
-    GeM Bid Compliance Test
-    Company Name: ABC Technologies
-    GST: 12345678901234
-    PAN: ABCDE1234F
-    """
-
-    tender_requirements = ["GST", "PAN", "Turnover"]
-
-    result = check_compliance(sample_text, tender_requirements)
-
-    print("GeM Bid Compliance Results")
-    print("--------------------------")
-    print("Status:", result["status"])
-    print("Compliance Score:", result["score"], "%")
-    print("Matched:", result["matched_requirements"])
-    print("Missing:", result["missing_requirements"])
-    print("Manual Review:", result["manual_review"])
-    print("Message:", result["message"])

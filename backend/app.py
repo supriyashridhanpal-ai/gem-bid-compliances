@@ -1,66 +1,184 @@
+
+import os
+import sys
 from pathlib import Path
 from uuid import uuid4
+from functools import wraps
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
-from backend.extraction import extract_text
-from backend.compliance import check_compliance
-from backend.database import (
+# Fix imports when running from the project root
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
+
+from extraction import extract_text
+from compliance import check_compliance
+from database import (
     initialize_database,
+    register_company,
+    login_company,
+    save_submission,
+    update_submission_text,
+    save_verification_result,
     save_review,
     get_all_reviews,
     get_review_by_id,
+    get_company_verification_history,
+    get_dashboard_statistics,
 )
 
 app = Flask(__name__)
-
-# Maximum upload size: 10 MB
+app.secret_key = os.environ.get(
+    "FLASK_SECRET_KEY", "change-this-secret-before-deployment"
+)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
-# Temporary PDF upload directory
-UPLOAD_FOLDER = Path(__file__).resolve().parent / "uploads"
+UPLOAD_FOLDER = BASE_DIR / "uploads"
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# Initialize the SQLite database
 initialize_database()
 
+
+# --------------------------------------------------
+# HELPER FUNCTIONS
+# --------------------------------------------------
+
+def login_required(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if "company_id" not in session:
+            return jsonify({"error": "Please log in first."}), 401
+        return function(*args, **kwargs)
+    return wrapper
+
+
+def input_value(name, default=""):
+    data = request.get_json(silent=True) or {}
+    return request.form.get(name, data.get(name, default))
+
+
+# --------------------------------------------------
+# HOME
+# --------------------------------------------------
 
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "message": "GeM Bid Compliance Verification API is running."
+        "message": "GeM Bid Compliance Verification API is running.",
+        "features": [
+            "Company registration and login",
+            "PDF upload and text extraction",
+            "Bid compliance checking",
+            "SQLite result storage",
+            "Company-specific verification history",
+        ],
     }), 200
 
 
+# --------------------------------------------------
+# COMPANY REGISTRATION
+# --------------------------------------------------
+
+@app.route("/register", methods=["POST"])
+def register():
+    name = input_value("name").strip()
+    email = input_value("email").strip().lower()
+    username = input_value("username").strip()
+    password = input_value("password")
+
+    if not all([name, email, username, password]):
+        return jsonify({"error": "All fields are required."}), 400
+
+    if len(password) < 8:
+        return jsonify({
+            "error": "Password must contain at least 8 characters."
+        }), 400
+
+    try:
+        company_id = register_company(
+            name,
+            email,
+            username,
+            generate_password_hash(password),
+        )
+        return jsonify({
+            "message": "Company registered successfully.",
+            "company_id": company_id,
+        }), 201
+
+    except Exception as error:
+        if "UNIQUE constraint failed" in str(error):
+            return jsonify({
+                "error": "Email or username already exists."
+            }), 409
+
+        app.logger.exception("Company registration failed.")
+        return jsonify({"error": "Registration failed."}), 500
+
+
+# --------------------------------------------------
+# COMPANY LOGIN
+# --------------------------------------------------
+
+@app.route("/login", methods=["POST"])
+def login():
+    username = input_value("username").strip()
+    password = input_value("password")
+
+    if not username or not password:
+        return jsonify({
+            "error": "Username/email and password are required."
+        }), 400
+
+    company = login_company(username)
+
+    if not company or not check_password_hash(
+        company["password"], password
+    ):
+        return jsonify({
+            "error": "Invalid username/email or password."
+        }), 401
+
+    session.clear()
+    session["company_id"] = company["id"]
+    session["company_name"] = company["name"]
+
+    return jsonify({
+        "message": "Login successful.",
+        "company_id": company["id"],
+        "company_name": company["name"],
+    }), 200
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return jsonify({"message": "Logged out successfully."}), 200
+
+
+# --------------------------------------------------
+# PDF UPLOAD AND COMPLIANCE VERIFICATION
+# --------------------------------------------------
+
 @app.route("/verify", methods=["POST"])
+@login_required
 def verify():
-    # 1. Check uploaded file
-    if "file" not in request.files:
-        return jsonify({
-            "error": "No PDF file uploaded."
-        }), 400
+    uploaded_file = request.files.get("file")
 
-    uploaded_file = request.files["file"]
-
-    if not uploaded_file.filename:
-        return jsonify({
-            "error": "Please select a PDF file."
-        }), 400
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({"error": "Please upload a PDF file."}), 400
 
     if Path(uploaded_file.filename).suffix.lower() != ".pdf":
-        return jsonify({
-            "error": "Only PDF files are supported."
-        }), 400
+        return jsonify({"error": "Only PDF files are supported."}), 400
 
-    # 2. Read tender requirements
-    requirements_text = request.form.get(
-        "requirements",
-        "GST, PAN, Turnover"
-    )
+    requirements_text = input_value(
+        "requirements", "GST, PAN, Turnover"
+    ).strip()
 
     requirements = [
         item.strip()
-        for item in requirements_text.split(",")
+        for item in requirements_text.replace("\n", ",").split(",")
         if item.strip()
     ]
 
@@ -69,82 +187,133 @@ def verify():
             "error": "Please provide at least one requirement."
         }), 400
 
-    # 3. Save PDF temporarily
+    original_filename = Path(uploaded_file.filename).name
     temporary_path = UPLOAD_FOLDER / f"{uuid4().hex}.pdf"
+    submission_id = None
 
     try:
-        uploaded_file.save(temporary_path)
+        uploaded_file.save(str(temporary_path))
 
-        # 4. Extract PDF text
+        # Save submission under the logged-in company.
+        submission_id = save_submission(
+            company_id=session["company_id"],
+            filename=original_filename,
+            extracted_text="",
+        )
+
+        # Extract text from the uploaded PDF.
         extracted_text = extract_text(temporary_path)
 
-        # 5. Check compliance
-        result = check_compliance(
-            extracted_text,
-            requirements
-        )
+        if not isinstance(extracted_text, str) or not extracted_text.strip():
+            update_submission_text(submission_id, "")
+            save_verification_result(
+                submission_id,
+                requirements,
+                [],
+                requirements,
+                0,
+                "Manual Review",
+                "No readable PDF text was extracted. Manual review is required.",
+            )
+            return jsonify({
+                "submission_id": submission_id,
+                "filename": original_filename,
+                "status": "Manual Review",
+                "message": "No readable text found. The PDF may be scanned or empty.",
+            }), 200
 
-        # 6. Prepare summary for SQLite
+        update_submission_text(submission_id, extracted_text)
+
+        # Run the existing compliance module.
+        result = check_compliance(extracted_text, requirements)
+
+        matched = result["matched_requirements"]
+        missing = result["missing_requirements"]
+        manual = result["manual_review"]
+        score = result["score"]
+        status = result["status"]
+
+        # Normalize status for the database.
+        allowed_statuses = {
+            "Pending", "Match", "Manual Review", "Mismatch", "Error"
+        }
+
+        if status not in allowed_statuses:
+            if manual:
+                status = "Manual Review"
+            elif missing:
+                status = "Mismatch"
+            else:
+                status = "Match"
+
         summary = (
-            f"Status: {result['status']}; "
-            f"Score: {result['score']}%; "
-            f"Matched: {len(result['matched_requirements'])}; "
-            f"Missing: {len(result['missing_requirements'])}; "
-            f"Manual review: {len(result['manual_review'])}"
+            f"Status: {status}; Score: {score}%; "
+            f"Matched: {len(matched)}; Missing: {len(missing)}; "
+            f"Manual review: {len(manual)}"
         )
 
-        # 7. Save verification history
+        # Save detailed verification results.
+        save_verification_result(
+            submission_id,
+            requirements,
+            matched,
+            missing,
+            score,
+            status,
+            result.get("message", summary),
+        )
+
+        # Save the summary for the review history.
         review_id = save_review(
-            uploaded_file.filename,
+            original_filename,
             ", ".join(requirements),
-            summary
+            summary,
+            company_id=session["company_id"],
+            submission_id=submission_id,
         )
 
-        # 8. Return result
         return jsonify({
             "review_id": review_id,
-            "filename": uploaded_file.filename,
-            "status": result["status"],
-            "score": result["score"],
-            "matched_requirements": result[
-                "matched_requirements"
-            ],
-            "missing_requirements": result[
-                "missing_requirements"
-            ],
-            "manual_review": result["manual_review"],
-            "message": result["message"]
+            "submission_id": submission_id,
+            "filename": original_filename,
+            "status": status,
+            "score": score,
+            "matched_requirements": matched,
+            "missing_requirements": missing,
+            "manual_review": manual,
+            "message": result.get("message", summary),
         }), 200
 
     except (ValueError, FileNotFoundError) as error:
-        return jsonify({
-            "error": str(error)
-        }), 400
+        app.logger.warning("Verification input error: %s", error)
+        return jsonify({"error": str(error)}), 400
 
-    except Exception as error:
-        # Log the full error in the Flask terminal
+    except Exception:
         app.logger.exception("Document verification failed.")
-
-        # Show the error type and message for debugging
         return jsonify({
-            "error": str(error),
-            "type": type(error).__name__
+            "error": "Verification failed. Check the Flask terminal for details."
         }), 500
 
     finally:
-        # Remove the temporary PDF after processing
         if temporary_path.exists():
             temporary_path.unlink()
 
 
+# --------------------------------------------------
+# VERIFICATION HISTORY
+# --------------------------------------------------
+
 @app.route("/history", methods=["GET"])
+@login_required
 def history():
-    return jsonify(get_all_reviews()), 200
+    records = get_company_verification_history(session["company_id"])
+    return jsonify(records), 200
 
 
 @app.route("/history/<int:review_id>", methods=["GET"])
+@login_required
 def review_details(review_id):
-    review = get_review_by_id(review_id)
+    review = get_review_by_id(review_id, session["company_id"])
 
     if review is None:
         return jsonify({
@@ -154,10 +323,25 @@ def review_details(review_id):
     return jsonify(review), 200
 
 
+# --------------------------------------------------
+# DASHBOARD STATISTICS
+# --------------------------------------------------
+
+@app.route("/dashboard", methods=["GET"])
+@login_required
+def dashboard():
+    statistics = get_dashboard_statistics(session["company_id"])
+    return jsonify(statistics), 200
+
+
+# --------------------------------------------------
+# ERROR HANDLERS
+# --------------------------------------------------
+
 @app.errorhandler(413)
 def file_too_large(error):
     return jsonify({
-        "error": "The uploaded file exceeds the 10 MB limit."
+        "error": "PDF exceeds the 10 MB upload limit."
     }), 413
 
 
