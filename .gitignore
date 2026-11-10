@@ -1,0 +1,4 @@
+backend/reviews.db
+backend/uploads/
+__pycache__/
+*.pyc
